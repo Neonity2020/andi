@@ -1,0 +1,37 @@
+{
+  "defaultProvider": "openai",
+  "databasePath": "data/agent.sqlite",
+  "providers": {
+    "openai": {
+      "enabled": true,
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKeyRef": "${OPENAI_API_KEY}",
+      "defaultModel": "gpt-4.1",
+      "models": [
+        { "id": "gpt-4.1", "label": "GPT-4.1" },
+        { "id": "gpt-4.1-mini", "label": "GPT-4.1 mini" }
+      ]
+    },
+    "anthropic": {
+      "enabled": true,
+      "baseUrl": "https://api.anthropic.com/v1",
+      "apiKeyRef": "${ANTHROPIC_API_KEY}",
+      "defaultModel": "claude-sonnet-4-5",
+      "models": [
+        { "id": "claude-sonnet-4-5", "label": "Claude Sonnet 4.5" }
+      ]
+    },
+    "zhipu-coding": {
+      "enabled": true,
+      "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
+      "apiKeyRef": "${ZHIPU_CODING_API_KEY}",
+      "defaultModel": "glm-4.7",
+      "models": [
+        { "id": "glm-4.7", "label": "GLM-4.7" },
+        { "id": "glm-5.1", "label": "GLM-5.1" },
+        { "id": "glm-5-turbo", "label": "GLM-5-Turbo" },
+        { "id": "glm-4.5-air", "label": "GLM-4.5-Air" }
+      ]
+    }
+  }
+}

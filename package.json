@@ -1,0 +1,11 @@
+{
+  "name": "andi-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/cli.ts --outdir dist",
+    "test": "bun test",
+    "check": "bun test",
+    "demo:context": "bun run src/cli.ts demo-context"
+  }
+}
