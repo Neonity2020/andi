@@ -1,0 +1,34 @@
+# andi
+
+`andi` is a lightweight coding-agent control plane built with Bun and TypeScript.
+
+## What it does
+
+- Persistent sessions backed by SQLite
+- Provider switching across OpenAI, Anthropic, and Zhipu Coding Plan
+- Interactive chat with automatic session restore
+- Context compaction to avoid injecting large generated code verbatim
+- Settings-driven provider, base URL, API key, and model management
+
+## Quick Start
+
+```bash
+bun install
+bun run src/cli.ts
+```
+
+The default command opens interactive chat and restores the most recent session when available.
+
+## Commands
+
+- `bun run src/cli.ts` - interactive chat
+- `bun run src/cli.ts setup` - generate `settings.json` and `.env`
+- `bun run src/cli.ts new` - create a session
+- `bun run src/cli.ts send` - send a single prompt to a session
+- `bun run src/cli.ts context` - inspect the active request bundle
+
+## Configuration
+
+- `settings.example.json` shows the provider and model layout
+- `.env.example` shows required API key variables
+- Real `settings.json` and `.env` stay local and are ignored by git
