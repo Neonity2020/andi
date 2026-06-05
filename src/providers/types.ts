@@ -7,12 +7,29 @@ export type ProviderStreamInput = {
   messages: ContextMessage[]
   summary?: string | null
   systemPrompt?: string | null
+  tools?: ProviderTool[]
   maxTokens?: number
   signal?: AbortSignal
 }
 
+export type ProviderTool = {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: unknown
+  }
+}
+
+export type ProviderToolCall = {
+  id: string
+  name: string
+  input: unknown
+}
+
 export type ProviderStreamEvent =
   | { type: 'token'; text: string }
+  | { type: 'tool_call'; toolCall: ProviderToolCall }
   | { type: 'done' }
 
 export type ProviderClient = {

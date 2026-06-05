@@ -18,6 +18,7 @@ export type MessageRecord = {
   provider: string | null
   model: string | null
   content: string
+  metadata: unknown | null
   token_count: number
   parent_message_id: number | null
   created_at: string
@@ -53,6 +54,7 @@ export type AppendMessageInput = {
   provider?: string | null
   model?: string | null
   content: string
+  metadata?: unknown | null
   tokenCount?: number
   parentMessageId?: number | null
 }
@@ -88,6 +90,7 @@ export class SqliteSessionStore {
         provider TEXT,
         model TEXT,
         content TEXT NOT NULL,
+        metadata TEXT,
         token_count INTEGER NOT NULL DEFAULT 0,
         parent_message_id INTEGER,
         created_at TEXT NOT NULL,
@@ -112,6 +115,7 @@ export class SqliteSessionStore {
         FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
     `)
+    this.ensureMessageMetadataColumn()
   }
 
   createSession({ title, activeProvider, modelHint = null }: CreateSessionInput): SessionRecord {
@@ -164,8 +168,8 @@ export class SqliteSessionStore {
     const tokenCount = message.tokenCount ?? estimateTokenCount(message.content)
     const stmt = this.db.prepare(`
       INSERT INTO messages (
-        session_id, role, provider, model, content, token_count, parent_message_id, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        session_id, role, provider, model, content, metadata, token_count, parent_message_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
     const info = stmt.run(
       sessionId,
@@ -173,6 +177,7 @@ export class SqliteSessionStore {
       message.provider ?? null,
       message.model ?? null,
       message.content,
+      message.metadata == null ? null : JSON.stringify(message.metadata),
       tokenCount,
       message.parentMessageId ?? null,
       now,
@@ -187,7 +192,7 @@ export class SqliteSessionStore {
         'SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?',
       )
       .all(sessionId, limit) as MessageRecord[]
-    return rows.reverse()
+    return rows.reverse().map(decodeMessageRecord)
   }
 
   setSummary(sessionId: number, summaryText: string, summaryVersion = 1): void {
@@ -239,6 +244,13 @@ export class SqliteSessionStore {
     const now = isoNow()
     this.db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(now, sessionId)
   }
+
+  private ensureMessageMetadataColumn(): void {
+    const columns = this.db.prepare('PRAGMA table_info(messages)').all() as Array<{ name: string }>
+    if (!columns.some(column => column.name === 'metadata')) {
+      this.db.prepare('ALTER TABLE messages ADD COLUMN metadata TEXT').run()
+    }
+  }
 }
 
 function isoNow(): string {
@@ -251,4 +263,22 @@ function estimateTokenCount(text: string): number {
   }
 
   return Math.max(1, Math.ceil(text.length / 4))
+}
+
+function decodeMessageRecord(message: MessageRecord): MessageRecord {
+  if (typeof message.metadata !== 'string') {
+    return message
+  }
+
+  try {
+    return {
+      ...message,
+      metadata: JSON.parse(message.metadata),
+    }
+  } catch {
+    return {
+      ...message,
+      metadata: null,
+    }
+  }
 }

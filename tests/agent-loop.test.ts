@@ -6,6 +6,7 @@ import { runAgentTurn } from '../src/agent/agent-loop.ts'
 import { loadSettings } from '../src/config/settings.ts'
 import type { ProviderClient } from '../src/providers/types.ts'
 import { SqliteSessionStore } from '../src/storage/sqlite-session-store.ts'
+import { createToolRegistry } from '../src/tools/registry.ts'
 
 let tempDirs: string[] = []
 
@@ -88,6 +89,85 @@ describe('agent loop', () => {
       }),
     ).rejects.toThrow('Session 404 was not found')
 
+    store.close()
+  })
+
+  test('executes tool calls and feeds tool results into a follow-up provider turn', async () => {
+    const { store } = createStore()
+    const settings = loadSettings({ env: { OPENAI_API_KEY: 'test-openai-key' } })
+    const session = store.createSession({
+      title: 'tool test',
+      activeProvider: 'openai',
+      modelHint: 'gpt-4.1',
+    })
+    const seenMessageRoles: string[][] = []
+    const toolRegistry = createToolRegistry([
+      {
+        name: 'read_file',
+        description: 'read a file',
+        inputSchema: { type: 'object' },
+        async execute(input) {
+          expect(input).toEqual({ path: 'README.md' })
+          return 'README contents'
+        },
+      },
+    ])
+
+    const client: ProviderClient = {
+      name: 'openai',
+      defaultModel: 'gpt-4.1',
+      async *stream(input) {
+        seenMessageRoles.push(input.messages.map(message => String(message.role)))
+        expect(input.systemPrompt).toContain('coding agent')
+        expect(input.tools?.[0]?.function.name).toBe('read_file')
+
+        if (seenMessageRoles.length === 1) {
+          yield {
+            type: 'tool_call',
+            toolCall: {
+              id: 'call_1',
+              name: 'read_file',
+              input: { path: 'README.md' },
+            },
+          }
+          yield { type: 'done' }
+          return
+        }
+
+        expect(input.messages.some(message => message.role === 'tool')).toBe(true)
+        yield { type: 'token', text: 'I read it.' }
+        yield { type: 'done' }
+      },
+    }
+
+    const result = await runAgentTurn({
+      store,
+      settings,
+      sessionId: session.id,
+      prompt: 'read README',
+      createClient: () => client,
+      toolRegistry,
+    })
+
+    const messages = store.listRecentMessages(session.id, 10)
+    expect(result.assistantContent).toBe('I read it.')
+    expect(result.toolResults).toHaveLength(1)
+    expect(messages.map(message => message.role)).toEqual(['user', 'assistant', 'tool', 'assistant'])
+    expect(messages[1]?.metadata).toEqual({
+      toolCalls: [
+        {
+          id: 'call_1',
+          name: 'read_file',
+          input: { path: 'README.md' },
+          arguments: '{"path":"README.md"}',
+        },
+      ],
+    })
+    expect(messages[2]?.metadata).toEqual({
+      toolCallId: 'call_1',
+      toolName: 'read_file',
+      isError: false,
+    })
     store.close()
   })
 })

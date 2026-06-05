@@ -1,6 +1,8 @@
 import { createInterface } from 'node:readline/promises'
 import { getDefaultModel, getProviderSettings, type AppSettings } from '../config/settings.ts'
 import { runAgentTurn } from '../agent/agent-loop.ts'
+import { createCliConfirmationHandler } from './confirm.ts'
+import { createMarkdownOutput } from './markdown.ts'
 import { SqliteSessionStore } from '../storage/sqlite-session-store.ts'
 import { parseProviderName } from '../providers/index.ts'
 import type { ProviderName } from '../providers/types.ts'
@@ -87,7 +89,13 @@ export async function runChatCommand({
 
       if (input.startsWith('/help')) {
         output.write(
-          `Commands: /provider <name> [model], /model <name>, /new [title], /session, /exit\n`,
+          `Commands:
+  /provider <name> [model]  - Switch provider (e.g. /provider openai gpt-4.1)
+  /model [name|#]           - Show models or switch (e.g. /model 2 or /model glm-5.1)
+  /new [title]              - Create new session
+  /session                 - Show current session info
+  /exit                    - Exit chat
+`,
         )
         continue
       }
@@ -125,11 +133,39 @@ export async function runChatCommand({
         continue
       }
 
-      if (input.startsWith('/model ')) {
-        const nextModel = input.slice('/model '.length).trim()
-        if (!nextModel) {
-          throw new Error('Missing model name')
+      if (input.startsWith('/model')) {
+        const arg = input.slice('/model'.length).trim()
+        const currentProviderSettings = getProviderSettings(settings, activeProvider)
+
+        if (!arg) {
+          // 显示模型列表让用户输入
+          output.write(`Current model: ${activeModel}\n`)
+          output.write(`Available models for ${activeProvider}:\n`)
+          currentProviderSettings.models.forEach((model, index) => {
+            const marker = model.id === activeModel ? '→' : ' '
+            const detail = model.maxTokens ? ` (max: ${model.maxTokens})` : ''
+            output.write(`  ${marker} ${index + 1}. ${model.label ?? model.id}${detail}\n`)
+          })
+          output.write(`\nUsage: /model <number> or /model <model-id>\n`)
+          output.write(`Example: /model 2  or  /model glm-5.1\n`)
+          continue
         }
+
+        // 检查是否是数字选择
+        const num = Number(arg)
+        if (Number.isFinite(num) && num >= 1 && num <= currentProviderSettings.models.length) {
+          const nextModel = currentProviderSettings.models[num - 1].id
+          const updated = store.updateSession(sessionId, { modelHint: nextModel })
+          if (!updated) {
+            throw new Error(`Session ${sessionId} was not found`)
+          }
+          activeModel = nextModel
+          output.write(`Switched to ${activeModel}\n`)
+          continue
+        }
+
+        // 直接指定模型名
+        const nextModel = arg
         const updated = store.updateSession(sessionId, { modelHint: nextModel })
         if (!updated) {
           throw new Error(`Session ${sessionId} was not found`)
@@ -156,7 +192,12 @@ export async function runChatCommand({
         settings,
         sessionId,
         prompt: input,
-        output,
+        output: shouldRenderMarkdown(flags)
+          ? createMarkdownOutput(output, { colors: isTtyOutput(output) })
+          : output,
+        toolExecutionContext: {
+          confirm: createCliConfirmationHandler(),
+        },
         limit: Number(flags.limit ?? 10),
         maxTokens: Number(flags.maxTokens ?? 1024),
       })
@@ -226,6 +267,14 @@ function resolveInitialSession(
 
 function isExitCommand(input: string): boolean {
   return input === '/exit' || input === 'exit' || input === '/quit' || input === 'quit'
+}
+
+function shouldRenderMarkdown(flags: FlagMap): boolean {
+  return flags.raw !== true && flags.markdown !== 'false'
+}
+
+function isTtyOutput(output: Pick<NodeJS.WriteStream, 'write'>): boolean {
+  return Boolean((output as { isTTY?: boolean }).isTTY)
 }
 
 function applyStartupOverrides({

@@ -2,6 +2,8 @@
 import { isAbsolute, join } from 'node:path'
 import { runAgentTurn } from './agent/agent-loop.ts'
 import { loadSettings } from './config/settings.ts'
+import { createCliConfirmationHandler } from './cli/confirm.ts'
+import { createMarkdownOutput } from './cli/markdown.ts'
 import { runChatCommand } from './cli/chat.ts'
 import {
   inferDefaultCommand,
@@ -97,7 +99,13 @@ if (command === 'send') {
       model: typeof flags.model === 'string' ? flags.model : undefined,
       limit: Number(flags.limit ?? 10),
       maxTokens: Number(flags.maxTokens ?? 1024),
-      output: process.stdout,
+      toolExecutionContext: {
+        confirm: createCliConfirmationHandler(),
+      },
+      output:
+        flags.raw === true || flags.markdown === 'false'
+          ? process.stdout
+          : createMarkdownOutput(process.stdout, { colors: process.stdout.isTTY }),
     })
   } finally {
     store.close()

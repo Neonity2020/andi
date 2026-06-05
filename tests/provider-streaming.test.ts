@@ -3,6 +3,7 @@ import { parseAnthropicStreamToken } from '../src/providers/anthropic.ts'
 import { parseOpenAIStreamToken } from '../src/providers/openai.ts'
 import { loadSettings } from '../src/config/settings.ts'
 import { createProviderClient } from '../src/providers/index.ts'
+import { createOpenAICompatibleClient } from '../src/providers/openai-compatible.ts'
 import { parseSSE } from '../src/providers/sse.ts'
 
 describe('provider streaming', () => {
@@ -104,5 +105,94 @@ describe('provider streaming', () => {
     expect(requestUrl).toBe('https://open.bigmodel.cn/api/coding/paas/v4/chat/completions')
     expect(authorization).toBe('Bearer test-zhipu-key')
     expect(tokens).toEqual(['ok'])
+  })
+
+  test('OpenAI-compatible client streams tool calls and sends tool schemas', async () => {
+    let requestBody: Record<string, unknown> = {}
+    const fetchImpl = async (_url: string | URL | Request, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          id: 'call_1',
+                          type: 'function',
+                          function: { name: 'read_file', arguments: '{"path":' },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              })}\n\n`,
+            ),
+          )
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({
+                choices: [
+                  {
+                    delta: {
+                      tool_calls: [
+                        {
+                          index: 0,
+                          function: { arguments: '"README.md"}' },
+                        },
+                      ],
+                    },
+                  },
+                ],
+              })}\n\n`,
+            ),
+          )
+          controller.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      })
+      return new Response(stream)
+    }
+
+    const client = createOpenAICompatibleClient({
+      name: 'openai',
+      apiKey: 'test-key',
+      baseUrl: 'https://api.example/v1',
+      defaultModel: 'gpt-test',
+      missingKeyName: 'OPENAI_API_KEY',
+      fetchImpl: fetchImpl as typeof fetch,
+    })
+    const events = []
+
+    for await (const event of client.stream({
+      model: 'gpt-test',
+      messages: [{ role: 'user', content: 'read' }],
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'read_file',
+            description: 'read',
+            parameters: { type: 'object' },
+          },
+        },
+      ],
+    })) {
+      events.push(event)
+    }
+
+    expect((requestBody.tools as unknown[])).toHaveLength(1)
+    expect(events).toContainEqual({
+      type: 'tool_call',
+      toolCall: {
+        id: 'call_1',
+        name: 'read_file',
+        input: { path: 'README.md' },
+      },
+    })
   })
 })

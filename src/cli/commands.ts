@@ -182,7 +182,7 @@ export function printHelp(): void {
   bun run src/cli.ts new [--db path] [--title text] [--provider openai|anthropic|zhipu-coding] [--model model]
   bun run src/cli.ts context --session <id> [--db path] [--provider openai|anthropic|zhipu-coding]
   bun run src/cli.ts switch --session <id> --provider openai|anthropic|zhipu-coding [--reason text]
-  bun run src/cli.ts send --session <id> --prompt text [--provider openai|anthropic|zhipu-coding] [--model model]
+  bun run src/cli.ts send --session <id> --prompt text [--provider openai|anthropic|zhipu-coding] [--model model] [--raw]
   bun run src/cli.ts demo-context [--provider openai|anthropic|zhipu-coding]
 
 No subcommand defaults to interactive chat and restores the most recent session when available.
